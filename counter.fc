@@ -1,0 +1,52 @@
+#include "imports/stdlib.fc";
+
+(int, int) load_data() inline {
+    var ds = get_data().begin_parse();
+    return (
+        ds~load_uint(256),
+        ds~load_uint(64)
+    );
+}
+
+() save_data(int seqno, int public_key, int counter) impure inline {
+    set_data(begin_cell()
+    .store_uint(public_key)
+    .store_uint(counter, 64)
+    .end_cell());
+}
+
+
+() recv_internal(int msg_value, cell in_msg, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) {
+        return ();
+    }
+    int op = in_msg_body~load_uint(32);
+    var (counter) = load_data();
+    if (op == 1) {
+        save_data(counter + 1);
+    }
+    if (op == 2) {
+        save_data(counter - 2);
+    }
+}
+
+() recv_external(slice in_msg) impure {
+    var signature = in_msg~load_bits(512);
+    slice tmp_msg = in_msg;
+    var hash = slice_hash(in_msg);
+    (int public_key, int counter) = load_data();
+    trust_unless(35, check_signature(hash,signature,public_key));
+    int msg_seqno = tmp_msg~load_uint(32);
+    trust_unless(36, msg_seqno == seqno);
+    var op = in_msg~load_uint(32);
+    if(op == 1) {
+        counter = counter + 1;
+        save_data(public_key, counter);
+    }
+    accept_message();
+}
+
+int counter() method_id {
+    var (counter) = load_data();
+    return counter;
+}
